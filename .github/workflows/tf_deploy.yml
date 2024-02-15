@@ -1,0 +1,99 @@
+name: Terraform
+
+on:
+  workflow_dispatch: #delete this line
+  ## Uncomment this block
+  # push:
+  #   branches:
+  #     - main
+  #     - dev
+  #   paths-ignore:
+  #     - '.github/**'
+  #     - 'assets/**'
+  #     - '*.md'
+  #     - '.gitignore'
+  # pull_request:
+  #   branches:
+  #     - main
+  #     - dev
+  #   paths-ignore:
+  #     - '.github/**'
+  #     - 'assets/**'
+  #     - '*.md'
+  #     - '.gitignore'
+  ##
+
+jobs:
+  check_branch:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check branch
+      run: |
+        if [[ "${{ github.base_ref }}" == "main" && "${{ github.head_ref }}" != "dev" ]]; then
+          echo "Error: Pull requests to 'main' can only be opened from the 'dev' branch."
+          exit 1
+        fi
+  terraform:
+    needs: check_branch
+    env:
+      TF_VAR_db_username: ${{ secrets.DB_USER }}
+      TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      actions: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Set environment specific variables
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "TF_VAR_FILE=env/prod.tfvars" >> $GITHUB_ENV
+          echo "TF_ENVIRONMENT=PROD" >> $GITHUB_ENV
+        else
+          echo "TF_VAR_FILE=env/dev.tfvars" >> $GITHUB_ENV
+          echo "TF_ENVIRONMENT=DEV" >> $GITHUB_ENV
+        fi
+    
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }} 
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+        aws-region: ${{ vars.REGION }}
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform workspace
+      run: |
+        terraform workspace new $TF_ENVIRONMENT || terraform workspace select $TF_ENVIRONMENT
+
+    - name: Terraform Validate
+      run: terraform validate 
+
+    - name: Terraform Plan
+      run: |
+        set -o pipefail
+        echo '## :construction: Terraform plan summary'  >> $GITHUB_STEP_SUMMARY
+        echo ''  >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY 
+        terraform plan -no-color -out=terraform.tfplan -var-file=${{ env.TF_VAR_FILE }} | tee -a $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        terraform show -json terraform.tfplan > terraform.tfplan.json
+
+    - name: Terraform Apply
+      run: |
+        set -o pipefail
+        echo '## :construction: Terraform Apply result'  >> $GITHUB_STEP_SUMMARY
+        echo ''  >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        terraform apply -auto-approve -no-color terraform.tfplan | tee -a $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')

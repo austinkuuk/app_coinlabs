@@ -1,0 +1,16 @@
+dns_name = "coin-labs.com"
+region = "ap-northeast-2"
+instance_name = "apps_coinlabs_dev"
+instance_type = "t3.xlarge"
+number_of_instances = 1
+name = "app_coinlabs_dev_vpc"
+cidr = "10.50.0.0/16"
+azs = ["ap-northeast-2a", "ap-northeast-2c"] 
+private_subnets = ["10.50.1.0/24", "10.50.2.0/24"]
+public_subnets = ["10.50.101.0/24", "10.50.102.0/24"]
+rds_subnet_group_name = "app_coinlabs_dev_subnet_group"
+env = "dev"
+db_username = "admin"
+db_password = "a34hrjksdnfsdksdf"
+db_name = "coinlabs_app_dev"
+docker_image = ""
